@@ -10,7 +10,7 @@ from typing import Dict
 import hmac
 
 # Import authentication module
-from auth import initialize_authenticator, get_special_user_api_key
+from auth import check_password, get_api_key
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
