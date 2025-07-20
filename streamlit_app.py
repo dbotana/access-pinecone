@@ -207,34 +207,47 @@ def main():
                 st.stop()
             else:
                 authenticator, special_username = auth_result
-            
-        if authenticator:
-    try:
-        if not st.session_state.authenticated_user:
-            # Show login form with corrected method call
-            login_result = authenticator.login('sidebar')
-            
-            if login_result is not None:
-                name, authentication_status, username = login_result
-                
-                if authentication_status == True:
-                    st.session_state.authenticated_user = True
-                    st.session_state.special_user_name = name
-                    st.session_state.special_username = username
-                    
-                    # Debug: Test API key access immediately after login
-                    test_api_key = get_special_user_api_key()
-                    if test_api_key:
-                        st.success(f"✅ Welcome {name}! API key loaded successfully.")
+
+            if authenticator:
+                try:
+                    if not st.session_state.authenticated_user:
+                        # Show login form with corrected method call
+                        login_result = authenticator.login('sidebar')
+                        
+                        if login_result is not None:
+                            name, authentication_status, username = login_result
+                            
+                            if authentication_status == True:
+                                st.session_state.authenticated_user = True
+                                st.session_state.special_user_name = name
+                                st.session_state.special_username = username
+                                
+                                # Debug: Test API key access immediately after login
+                                test_api_key = get_special_user_api_key()
+                                if test_api_key:
+                                    st.success(f"✅ Welcome {name}! API key loaded successfully.")
+                                else:
+                                    st.warning(f"✅ Welcome {name}! But API key failed to load.")
+                                
+                                st.rerun()
+                                
+                            elif authentication_status == False:
+                                st.error('❌ Incorrect credentials')
+                        else:
+                            st.info('👆 Please enter your username and password')
                     else:
-                        st.warning(f"✅ Welcome {name}! But API key failed to load.")
-                    
-                    st.rerun()
-                    
-                elif authentication_status == False:
-                    st.error('❌ Incorrect credentials')
+                        # Show logged in user info
+                        st.success(f"🟢 Logged in as: {st.session_state.special_user_name}")
+                        
+                        if st.button("🚪 Logout"):
+                            authenticator.logout('sidebar')
+                            st.session_state.authenticated_user = False
+                            st.rerun()
+                            
+                except Exception as e:
+                    st.error(f"Authentication error: {e}")
             else:
-                st.info('👆 Please enter your username and password')
+                st.error("Authentication system unavailable")
 
         st.markdown("---")
         
