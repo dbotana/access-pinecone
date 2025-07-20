@@ -205,7 +205,7 @@ def main():
                 try:
                     if not st.session_state.authenticated_user:
                         # Show login form
-                        name, authentication_status, username = authenticator.login('Login', 'sidebar')
+                        name, authentication_status, username = authenticator.login('sidebar')
                         
                         if authentication_status == True:
                             st.session_state.authenticated_user = True

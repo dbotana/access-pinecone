@@ -3,7 +3,7 @@ import streamlit_authenticator as stauth
 import bcrypt
 
 def initialize_authenticator():
-    """Initialize the authenticator with single special user."""
+    """Initialize the authenticator with single special user using correct API structure."""
     
     try:
         # Load single user credentials from secrets
@@ -11,13 +11,21 @@ def initialize_authenticator():
         name = st.secrets["special_user"]["name"]
         password = st.secrets["special_user"]["password"]
         
-        # Create authenticator for single user
+        # Create credentials dictionary in the format expected by newer versions
+        credentials = {
+            "usernames": {
+                username: {
+                    "name": name,
+                    "password": password
+                }
+            }
+        }
+        
+        # Create authenticator with correct parameter structure
         authenticator = stauth.Authenticate(
-            names=[name],
-            usernames=[username], 
-            passwords=[password],
-            cookie_name=st.secrets["auth"]["cookie_name"],
-            key=st.secrets["auth"]["cookie_key"],
+            credentials,  # First parameter: credentials dictionary
+            st.secrets["auth"]["cookie_name"],
+            st.secrets["auth"]["cookie_key"],
             cookie_expiry_days=st.secrets["auth"]["cookie_expiry_days"]
         )
         
