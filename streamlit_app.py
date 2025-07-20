@@ -51,7 +51,7 @@ def initialize_session_state():
         'chunk_size': 1000,
         'chunk_overlap': 200,
         'embedding_model': 'text-embedding-3-small',
-        'llm_model': 'gpt-4',
+        'llm_model': 'gpt-4.1-nano',
         'vector_store_type': 'faiss'
     }
     
@@ -118,7 +118,7 @@ def get_openai_api_key():
     return st.session_state.get('openai_api_key') or os.getenv("OPENAI_API_KEY")
 
 def generate_enhanced_response(prompt: str) -> dict:
-    """Generate AI response with context."""
+    """Generate AI response with context using user's selected model."""
     try:
         api_key = get_openai_api_key()
         if not api_key:
@@ -126,6 +126,16 @@ def generate_enhanced_response(prompt: str) -> dict:
                 "content": "Please provide an OpenAI API key to enable AI responses.",
                 "sources": []
             }
+        
+        # Check if user has selected a model
+        if 'llm_model' not in st.session_state or not st.session_state['llm_model']:
+            return {
+                "content": "Please select an LLM model in the sidebar before chatting.",
+                "sources": []
+            }
+        
+        # Use the exact model the user selected
+        selected_model = st.session_state['llm_model']
         
         client = OpenAI(api_key=api_key)
         
@@ -145,8 +155,9 @@ def generate_enhanced_response(prompt: str) -> dict:
             {"role": "user", "content": prompt}
         ]
         
+        # Use the user's exact selection - no fallback
         response = client.chat.completions.create(
-            model=st.session_state.get('llm_model', 'gpt-4'),
+            model=selected_model,  # Direct use of user selection
             messages=messages,
             temperature=0.3,
             max_tokens=800
@@ -166,9 +177,9 @@ def generate_enhanced_response(prompt: str) -> dict:
         }
         
     except Exception as e:
-        logger.error(f"Error generating response: {e}")
+        logger.error(f"Error generating response with model {st.session_state.get('llm_model', 'unknown')}: {e}")
         return {
-            "content": f"I encountered an error: {str(e)}. Please check your API key and try again.",
+            "content": f"I encountered an error using the {st.session_state.get('llm_model', 'selected')} model: {str(e)}. Please check your API key and model selection.",
             "sources": []
         }
 
@@ -189,12 +200,12 @@ def main():
         if api_key:
             st.session_state.openai_api_key = api_key
         
-        # Simple RAG settings
-        st.subheader("Settings")
-        llm_model = st.selectbox("LLM Model", ["gpt-4", "gpt-3.5-turbo"], 
-                                index=0 if st.session_state.llm_model == "gpt-4" else 1)
-        st.session_state.llm_model = llm_model
-        
+        model_options = ["gpt-4.1-nano", "o4-mini", "o4-mini-deep-research", "gpt-4o-mini-search-preview"]
+        current_model = st.session_state.llm_model
+        default_index = model_options.index(current_model) if current_model in model_options else 0
+
+        llm_model = st.selectbox("LLM Model", model_options, index=default_index)
+
         # RAG System
         if st.button("🚀 Initialize System"):
             setup_rag_system()
