@@ -44,10 +44,30 @@ def initialize_authenticator():
 def get_special_user_api_key():
     """Get the special user's API key from secrets."""
     try:
-        return st.secrets["openai"]["special_user_api_key"]
+        # Debug: Check if secrets are accessible
+        st.write("🔍 Checking API key access...")
+        
+        if "openai" not in st.secrets:
+            st.error("❌ 'openai' section not found in secrets")
+            return None
+            
+        if "special_user_api_key" not in st.secrets["openai"]:
+            st.error("❌ 'special_user_api_key' not found in openai section")
+            return None
+            
+        api_key = st.secrets["openai"]["special_user_api_key"]
+        
+        if api_key:
+            st.write(f"✅ API key loaded (ends with: ...{api_key[-8:]})")
+            return api_key
+        else:
+            st.error("❌ API key is empty")
+            return None
+            
     except Exception as e:
-        st.error(f"Error loading special user API key: {e}")
+        st.error(f"❌ Error loading special user API key: {e}")
         return None
+
 
 def hash_password(plain_password):
     """Helper function to hash a password for initial setup."""
