@@ -3,15 +3,28 @@ import streamlit_authenticator as stauth
 import bcrypt
 
 def initialize_authenticator():
-    """Initialize the authenticator with single special user using correct API structure."""
+    """Initialize the authenticator with enhanced error handling."""
     
     try:
-        # Load single user credentials from secrets
+        # Debug: Check if secrets are accessible
+        st.write("🔍 Checking secrets access...")
+        
+        # Load credentials with explicit error checking
+        if "special_user" not in st.secrets:
+            st.error("❌ 'special_user' section not found in secrets")
+            return None, None
+            
+        if "auth" not in st.secrets:
+            st.error("❌ 'auth' section not found in secrets")
+            return None, None
+        
         username = st.secrets["special_user"]["username"]
         name = st.secrets["special_user"]["name"]
         password = st.secrets["special_user"]["password"]
         
-        # Create credentials dictionary in the format expected by newer versions
+        st.write(f"✅ Loaded user: {username}")
+        
+        # Create credentials dictionary
         credentials = {
             "usernames": {
                 username: {
@@ -21,18 +34,25 @@ def initialize_authenticator():
             }
         }
         
-        # Create authenticator with correct parameter structure
+        st.write("✅ Created credentials dictionary")
+        
+        # Try creating authenticator
         authenticator = stauth.Authenticate(
-            credentials,  # First parameter: credentials dictionary
+            credentials,
             st.secrets["auth"]["cookie_name"],
             st.secrets["auth"]["cookie_key"],
             cookie_expiry_days=st.secrets["auth"]["cookie_expiry_days"]
         )
         
+        st.write("✅ Authenticator created successfully")
         return authenticator, username
         
+    except KeyError as e:
+        st.error(f"❌ Missing key in secrets: {e}")
+        return None, None
     except Exception as e:
-        st.error(f"Authentication configuration error: {e}")
+        st.error(f"❌ Authentication setup error: {str(e)}")
+        st.error(f"Error type: {type(e).__name__}")
         return None, None
 
 def get_special_user_api_key():
