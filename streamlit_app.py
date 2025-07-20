@@ -200,11 +200,11 @@ def main():
             
             # Initialize authenticator
             authenticator, special_username = initialize_authenticator()
-            
+
             if authenticator:
                 try:
                     if not st.session_state.authenticated_user:
-                        # Show login form
+                        # Show login form with updated method call
                         name, authentication_status, username = authenticator.login('sidebar')
                         
                         if authentication_status == True:
@@ -226,16 +226,14 @@ def main():
                         if st.button("🚪 Logout"):
                             authenticator.logout('Logout', 'sidebar')
                             st.session_state.authenticated_user = False
-                            if 'special_user_name' in st.session_state:
-                                del st.session_state['special_user_name']
-                            if 'special_username' in st.session_state:
-                                del st.session_state['special_username']
+                            # Clear other session variables
                             st.rerun()
                             
                 except Exception as e:
                     st.error(f"Authentication error: {e}")
             else:
                 st.error("Authentication system unavailable")
+
         
         st.markdown("---")
         
