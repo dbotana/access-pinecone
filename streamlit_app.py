@@ -199,7 +199,16 @@ def main():
             st.subheader("👤 User Login")
             
             # Initialize authenticator
-            authenticator, special_username = initialize_authenticator()
+            # debug version:
+            auth_result = initialize_authenticator()
+
+            if auth_result is None or auth_result[0] is None:
+                st.error("❌ Authentication system failed to initialize")
+                st.info("Please check your secrets configuration and try refreshing the page")
+                st.stop()
+            else:
+                authenticator, special_username = auth_result
+                st.success("✅ Authentication system initialized successfully")
 
             if authenticator:
                 try:
