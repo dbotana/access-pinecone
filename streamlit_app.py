@@ -199,7 +199,6 @@ def main():
             st.subheader("👤 User Login")
             
             # Initialize authenticator
-            # debug version:
             auth_result = initialize_authenticator()
 
             if auth_result is None or auth_result[0] is None:
@@ -208,26 +207,27 @@ def main():
                 st.stop()
             else:
                 authenticator, special_username = auth_result
-                st.success("✅ Authentication system initialized successfully")
 
             if authenticator:
                 try:
                     if not st.session_state.authenticated_user:
-                        # Show login form with updated method call
-                        name, authentication_status, username = authenticator.login('Login', 'sidebar')
+                        # Show login form with proper error handling
+                        login_result = authenticator.login('Login', 'sidebar')
                         
-                        if authentication_status == True:
-                            st.session_state.authenticated_user = True
-                            st.session_state.special_user_name = name
-                            st.session_state.special_username = username
-                            st.success(f"✅ Welcome {name}!")
-                            st.rerun()
+                        if login_result is not None:
+                            name, authentication_status, username = login_result
                             
-                        elif authentication_status == False:
-                            st.error('❌ Incorrect credentials')
-                            
-                        elif authentication_status == None:
-                            st.info('👆 Please login')
+                            if authentication_status == True:
+                                st.session_state.authenticated_user = True
+                                st.session_state.special_user_name = name
+                                st.session_state.special_username = username
+                                st.success(f"✅ Welcome {name}!")
+                                st.rerun()
+                                
+                            elif authentication_status == False:
+                                st.error('❌ Incorrect credentials')
+                        else:
+                            st.info('👆 Please enter your username and password')
                     else:
                         # Show logged in user info
                         st.success(f"🟢 Logged in as: {st.session_state.special_user_name}")
@@ -235,7 +235,6 @@ def main():
                         if st.button("🚪 Logout"):
                             authenticator.logout('Logout', 'sidebar')
                             st.session_state.authenticated_user = False
-                            # Clear other session variables
                             st.rerun()
                             
                 except Exception as e:
