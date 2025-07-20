@@ -212,7 +212,7 @@ def main():
                 try:
                     if not st.session_state.authenticated_user:
                         # Show login form with proper error handling
-                        login_result = authenticator.login('Login', 'sidebar')
+                        login_result = authenticator.login('sidebar')
                         
                         if login_result is not None:
                             name, authentication_status, username = login_result
@@ -233,7 +233,7 @@ def main():
                         st.success(f"🟢 Logged in as: {st.session_state.special_user_name}")
                         
                         if st.button("🚪 Logout"):
-                            authenticator.logout('Logout', 'sidebar')
+                            authenticator.logout('sidebar')
                             st.session_state.authenticated_user = False
                             st.rerun()
                             
