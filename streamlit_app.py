@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 # Page configuration
 st.set_page_config(
-    page_title="Disability Science Research Assistant",
+    page_title="ACCESS: AI-Curated Comprehensive Evidence Search System",
     page_icon="♿",
     layout="wide"
 )
@@ -53,6 +53,68 @@ def initialize_session_state():
         if key not in st.session_state:
             st.session_state[key] = default_value
 
+import requests
+from bs4 import BeautifulSoup
+from openai import OpenAI
+
+@st.cache_data(ttl=3600)  # Cache for 1 hour
+def fetch_dataset_texts():
+    """Fetch text content from all dataset URLs."""
+    texts = {}
+    headers = {"User-Agent": "Mozilla/5.0"}
+    
+    for name, url in DISABILITY_DATASETS.items():
+        try:
+            response = requests.get(url, headers=headers, timeout=10)
+            response.raise_for_status()
+            
+            if url.endswith('.csv'):
+                texts[name] = response.text[:5000]  # First 5k chars
+            else:
+                soup = BeautifulSoup(response.text, 'html.parser')
+                paragraphs = soup.find_all('p')
+                text_content = ' '.join(p.get_text(strip=True) for p in paragraphs)
+                texts[name] = text_content[:5000]  # First 5k chars
+                
+        except Exception as e:
+            texts[name] = f"Error fetching content: {e}"
+    
+    return texts
+
+def cosine_similarity(vec1, vec2):
+    """Calculate cosine similarity between two vectors."""
+    dot = sum(a*b for a, b in zip(vec1, vec2))
+    norm1 = sum(a*a for a in vec1) ** 0.5
+    norm2 = sum(b*b for b in vec2) ** 0.5
+    return dot / (norm1 * norm2) if norm1 and norm2 else 0.0
+
+def get_relevant_sources(prompt: str, api_key: str, top_k: int = 2):
+    """Get most relevant dataset sources for a given prompt."""
+    texts = fetch_dataset_texts()
+    client = OpenAI(api_key=api_key)
+    
+    # Get prompt embedding
+    prompt_response = client.embeddings.create(
+        model="text-embedding-3-small", 
+        input=prompt
+    )
+    prompt_embedding = prompt_response.data[0].embedding
+    
+    # Calculate similarities
+    similarities = []
+    for name, text in texts.items():
+        if not text.startswith("Error"):
+            text_response = client.embeddings.create(
+                model="text-embedding-3-small", 
+                input=text
+            )
+            text_embedding = text_response.data[0].embedding
+            similarity = cosine_similarity(prompt_embedding, text_embedding)
+            similarities.append((name, similarity))
+    
+    # Return top k most similar
+    similarities.sort(key=lambda x: x[1], reverse=True)
+    return similarities[:top_k]
 
 import bcrypt
 import streamlit as st
@@ -97,19 +159,19 @@ def get_api_key():
     return st.secrets["openai_api_key"]
 
 def display_chat_message(message: Dict, is_user: bool = True):
-    """Display a chat message with proper styling."""
+    """Display a chat message with enhanced source information."""
     role = "user" if is_user else "assistant"
     
     with st.chat_message(role):
         st.markdown(message.get('content', ''))
         
         if not is_user and 'sources' in message and message['sources']:
-            with st.expander(f"📚 Referenced Sources ({len(message['sources'])})", expanded=False):
+            with st.expander(f"📚 Smart Sources ({len(message['sources'])})", expanded=False):
                 for source in message['sources']:
                     name = source.get('name', 'Unknown')
                     url = source.get('url', '#')
-                    st.markdown(f"• **[{name}]({url})**")
-
+                    relevance = source.get('relevance', 'N/A')
+                    st.markdown(f"• **[{name}]({url})** (relevance: {relevance})")
 @st.cache_data(ttl=3600)
 def download_excel_file(url: str, filename: str) -> pd.DataFrame:
     """Download CSV file from URL and return as DataFrame."""
@@ -131,7 +193,7 @@ def download_excel_file(url: str, filename: str) -> pd.DataFrame:
         return pd.DataFrame()
 
 def generate_enhanced_response(prompt: str, model: str, api_key: str) -> dict:
-    """Generate AI response using the current API key."""
+    """Generate AI response with smart source retrieval."""
     try:
         if not api_key:
             return {
@@ -141,19 +203,20 @@ def generate_enhanced_response(prompt: str, model: str, api_key: str) -> dict:
         
         client = OpenAI(api_key=api_key)
         
+        # Get relevant sources
+        relevant_sources = get_relevant_sources(prompt, api_key, top_k=2)
+        
         # Build context
-        context_parts = ["You are a disability science research assistant."]
+        context = "You are a disability science research assistant."
         
-        if st.session_state.datasets:
-            context_parts.append("\nAvailable datasets:")
-            for name, info in st.session_state.datasets.items():
-                df = info['data']
-                context_parts.append(f"- {name}: {len(df)} records")
+        if relevant_sources:
+            context += f"\n\nMost relevant sources for this query:"
+            for name, similarity in relevant_sources:
+                context += f"\n- {name} (relevance: {similarity:.2f})"
         
-        system_message = "\n".join(context_parts)
-        
+        # Generate response
         messages = [
-            {"role": "system", "content": system_message},
+            {"role": "system", "content": context},
             {"role": "user", "content": prompt}
         ]
         
@@ -164,13 +227,15 @@ def generate_enhanced_response(prompt: str, model: str, api_key: str) -> dict:
             max_tokens=800
         )
         
-        # Extract referenced sources
+        # Create sources list
         sources = []
-        response_text = response.choices[0].message.content.lower()
-        
-        for name, url in DISABILITY_DATASETS.items():
-            if any(keyword in response_text for keyword in name.lower().split()):
-                sources.append({"name": name, "url": url})
+        for name, similarity in relevant_sources:
+            if name in DISABILITY_DATASETS:
+                sources.append({
+                    "name": name, 
+                    "url": DISABILITY_DATASETS[name],
+                    "relevance": f"{similarity:.2f}"
+                })
         
         return {
             "content": response.choices[0].message.content,
@@ -178,9 +243,8 @@ def generate_enhanced_response(prompt: str, model: str, api_key: str) -> dict:
         }
         
     except Exception as e:
-        logger.error(f"Error generating response: {e}")
         return {
-            "content": f"Error generating response: {str(e)}. Please check your API key and model selection.",
+            "content": f"Error generating response: {str(e)}",
             "sources": []
         }
 
@@ -245,6 +309,25 @@ def main():
             for name, info in st.session_state.datasets.items():
                 df = info['data']
                 st.write(f"• {name}: {len(df)} records")
+        # Simple status check:
+        st.subheader("🧠 Smart Source Analysis")
+
+        if st.button("🔄 Test Source Retrieval"):
+            with st.spinner("Testing source analysis..."):
+                try:
+                    texts = fetch_dataset_texts()
+                    successful = sum(1 for text in texts.values() if not text.startswith("Error"))
+                    st.success(f"✅ Successfully analyzed {successful}/{len(texts)} sources")
+                    
+                    with st.expander("Source Status"):
+                        for name, text in texts.items():
+                            if text.startswith("Error"):
+                                st.error(f"❌ {name}: Failed to fetch")
+                            else:
+                                st.success(f"✅ {name}: {len(text)} characters")
+                except Exception as e:
+                    st.error(f"❌ Error: {e}")
+
 
     # Main content area
     col1, col2 = st.columns([2, 1])
