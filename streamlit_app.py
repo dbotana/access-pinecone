@@ -27,7 +27,7 @@ st.set_page_config(
 DISABILITY_DATASETS = {
     "CDC Disability Datasets": "https://www.cdc.gov/dhds/datasets/index.html",
     "Bureau of Labor Statistics": "https://data.bls.gov/dataQuery/find?removeAll=1",
-    "Bureau of Labor Statistics 2025 Labor Force Characteristics Summary": "https://www.bls.gov/news.release/disabl.nr0.htm",
+    "Bureau of Labor Statistics 2025 Labor Force Characteristics Summary": "https://www.bls.gov/news.release/pdf/disabl.pdf",
     "National Center for College Students with Disabilities": "https://nccsd.ici.umn.edu/clearinghouse/audience-specific-resources/researchers--policy-makers/stats-college-stds-with-disabilities",
     "NIH Resources for Researchers with Disabilities": "https://grants.nih.gov/new-to-nih/information-for/researchers/researchers-with-disabilities",
     "UNH Center for Research on Disability ADSC Compendium": "https://universitysystemnh.sharepoint.com/:u:/r/teams/IODPublicLinks/Shared%20Documents/Research%20on%20Disability%20Website%20Public%20Links/Compendium/2025%20ADSC%20HTML%20Docs/HTML-Full-Compendium.html?csf=1&web=1&e=qBfYO9",
