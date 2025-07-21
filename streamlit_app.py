@@ -193,7 +193,7 @@ def download_excel_file(url: str, filename: str) -> pd.DataFrame:
         return pd.DataFrame()
 
 def generate_enhanced_response(prompt: str, model: str, api_key: str) -> dict:
-    """Generate AI response with smart source retrieval."""
+    """Generate AI response with model-specific parameter handling & endpoint selection."""
     try:
         if not api_key:
             return {
@@ -214,18 +214,71 @@ def generate_enhanced_response(prompt: str, model: str, api_key: str) -> dict:
             for name, similarity in relevant_sources:
                 context += f"\n- {name} (relevance: {similarity:.2f})"
         
-        # Generate response
-        messages = [
-            {"role": "system", "content": context},
-            {"role": "user", "content": prompt}
-        ]
-        
-        response = client.chat.completions.create(
-            model=model,
-            messages=messages,
-            temperature=0.3,
-            max_tokens=800
-        )
+        # Handle model-specific requirements
+        if model == "gpt-4o-mini-search-preview":
+            # No temperature parameter, uses chat completions
+            messages = [
+                {"role": "system", "content": context},
+                {"role": "user", "content": prompt}
+            ]
+            response = client.chat.completions.create(
+                model=model,
+                messages=messages,
+                max_tokens=800
+            )
+            content = response.choices[0].message.content
+            
+        elif model == "o4-mini":
+            # Uses max_completion_tokens instead of max_tokens
+            messages = [
+                {"role": "system", "content": context},
+                {"role": "user", "content": prompt}
+            ]
+            response = client.chat.completions.create(
+                model=model,
+                messages=messages,
+                temperature=0.3,
+                max_completion_tokens=800
+            )
+            content = response.choices[0].message.content
+            
+        elif model == "o4-mini-deep-research":
+            # Uses v1/responses endpoint instead of chat completions
+            # Combine context and prompt for responses endpoint
+            full_prompt = f"{context}\n\nUser Query: {prompt}"
+            
+            try:
+                # Try the responses endpoint
+                response = client.responses.create(
+                    model=model,
+                    prompt=full_prompt,
+                    temperature=0.3,
+                    max_tokens=800
+                )
+                content = response.choices[0].text
+            except AttributeError:
+                # If responses endpoint doesn't exist in client, use completions
+                response = client.completions.create(
+                    model=model,
+                    prompt=full_prompt,
+                    temperature=0.3,
+                    max_tokens=800
+                )
+                content = response.choices[0].text
+                
+        else:
+            # Default case: gpt-4.1-nano and other standard models
+            messages = [
+                {"role": "system", "content": context},
+                {"role": "user", "content": prompt}
+            ]
+            response = client.chat.completions.create(
+                model=model,
+                messages=messages,
+                temperature=0.3,
+                max_tokens=800
+            )
+            content = response.choices[0].message.content
         
         # Create sources list
         sources = []
@@ -238,7 +291,7 @@ def generate_enhanced_response(prompt: str, model: str, api_key: str) -> dict:
                 })
         
         return {
-            "content": response.choices[0].message.content,
+            "content": content,
             "sources": sources
         }
         
@@ -247,6 +300,42 @@ def generate_enhanced_response(prompt: str, model: str, api_key: str) -> dict:
             "content": f"Error generating response: {str(e)}",
             "sources": []
         }
+        
+def get_model_config(model: str) -> dict:
+    """Get configuration details for each model."""
+    model_configs = {
+        "gpt-4.1-nano": {
+            "supports_temperature": True,
+            "token_parameter": "max_tokens",
+            "endpoint": "chat/completions",
+            "description": "✅ Full chat features"
+        },
+        "gpt-4o-mini-search-preview": {
+            "supports_temperature": False,
+            "token_parameter": "max_tokens", 
+            "endpoint": "chat/completions",
+            "description": "🔍 Search-optimized (no temperature)"
+        },
+        "o4-mini": {
+            "supports_temperature": True,
+            "token_parameter": "max_completion_tokens",
+            "endpoint": "chat/completions", 
+            "description": "⚡ Uses max_completion_tokens"
+        },
+        "o4-mini-deep-research": {
+            "supports_temperature": True,
+            "token_parameter": "max_tokens",
+            "endpoint": "responses",
+            "description": "🔬 Research model (responses API)"
+        }
+    }
+    
+    return model_configs.get(model, {
+        "supports_temperature": True,
+        "token_parameter": "max_tokens",
+        "endpoint": "chat/completions",
+        "description": "❓ Unknown model"
+    })
 
 def main():
     """Main application with simplified password-based authentication."""
@@ -271,16 +360,34 @@ def main():
             st.rerun()
         
         st.markdown("---")
-        
-        # Model selection
         st.subheader("🤖 Model Settings")
+
+        # Model options with compatibility info
         model_options = ["gpt-4.1-nano", "o4-mini", "o4-mini-deep-research", "gpt-4o-mini-search-preview"]
+
+        # Create selection with descriptions
         current_model = st.session_state.llm_model
         default_index = model_options.index(current_model) if current_model in model_options else 0
-        
-        selected_model = st.selectbox("LLM Model", model_options, index=default_index)
+
+        selected_model = st.selectbox(
+            "LLM Model", 
+            model_options, 
+            index=default_index,
+            format_func=lambda x: f"{x}"
+        )
+
+        # Show model info
+        if selected_model:
+            config = get_model_config(selected_model)
+            st.caption(config["description"])
+            
+            with st.expander("Model Details"):
+                st.write(f"**Endpoint:** {config['endpoint']}")
+                st.write(f"**Temperature:** {'✅ Supported' if config['supports_temperature'] else '❌ Not supported'}")
+                st.write(f"**Token Parameter:** {config['token_parameter']}")
+
         st.session_state.llm_model = selected_model
-        
+
         # API Key status
         st.markdown("---")
         st.subheader("🔍 Status")
