@@ -148,7 +148,7 @@ def check_password():
         type="password", 
         on_change=password_entered, 
         key="password",
-        help="Enter the password to access the Disability Science Research Assistant"
+        help="Enter the password to access ACCESS"
     )
     
     if "password_correct" in st.session_state and not st.session_state["password_correct"]:
@@ -345,7 +345,7 @@ def main():
     initialize_session_state()
     
     # Header
-    st.title("♿ Disability Science Research Assistant")
+    st.title("♿ ACCESS: AI-Curated Comprehensive Evidence Search System")
     
     # Password protection - check first
     if not check_password():
