@@ -8,6 +8,10 @@ from datetime import datetime, timedelta
 from io import BytesIO
 from typing import Dict
 import hmac
+# Add this import with your other imports
+import PyPDF2
+from io import BytesIO
+
 
 # Import authentication module
 from auth import check_password, get_api_key
@@ -46,6 +50,7 @@ def initialize_session_state():
     defaults = {
         'chat_history': [],
         'datasets': {},
+        'uploaded_pdfs': {},
         'system_initialized': False,
         'rag_system': None,
         'llm_model': 'gpt-4.1-nano',
@@ -84,6 +89,67 @@ def fetch_dataset_texts():
     
     return texts
 
+def extract_text_from_pdf(pdf_file):
+    """Extract text content from uploaded PDF file."""
+    try:
+        pdf_reader = PyPDF2.PdfReader(pdf_file)
+        text_content = ""
+        
+        for page_num, page in enumerate(pdf_reader.pages):
+            try:
+                page_text = page.extract_text()
+                text_content += f"\n--- Page {page_num + 1} ---\n{page_text}"
+            except Exception as e:
+                text_content += f"\n--- Page {page_num + 1} (Error: {str(e)}) ---\n"
+        
+        return text_content
+    except Exception as e:
+        st.error(f"Error reading PDF: {str(e)}")
+        return ""
+
+def chunk_text(text, max_chars=4000):
+    """Split text into chunks to fit within token limits."""
+    if len(text) <= max_chars:
+        return [text]
+    
+    chunks = []
+    words = text.split()
+    current_chunk = ""
+    
+    for word in words:
+        if len(current_chunk + " " + word) <= max_chars:
+            current_chunk += (" " + word) if current_chunk else word
+        else:
+            if current_chunk:
+                chunks.append(current_chunk)
+            current_chunk = word
+    
+    if current_chunk:
+        chunks.append(current_chunk)
+    
+    return chunks
+
+def process_uploaded_pdfs(uploaded_files):
+    """Process multiple uploaded PDF files."""
+    pdf_contents = {}
+    
+    for uploaded_file in uploaded_files:
+        if uploaded_file.type == "application/pdf":
+            with st.spinner(f"Processing {uploaded_file.name}..."):
+                text_content = extract_text_from_pdf(uploaded_file)
+                if text_content:
+                    # Chunk the content to manage size
+                    chunks = chunk_text(text_content, max_chars=3000)
+                    pdf_contents[uploaded_file.name] = {
+                        "content": text_content,
+                        "chunks": chunks,
+                        "upload_time": datetime.now(),
+                        "size": len(text_content),
+                        "pages": len(chunks)
+                    }
+    
+    return pdf_contents
+
 def cosine_similarity(vec1, vec2):
     """Calculate cosine similarity between two vectors."""
     dot = sum(a*b for a, b in zip(vec1, vec2))
@@ -91,9 +157,18 @@ def cosine_similarity(vec1, vec2):
     norm2 = sum(b*b for b in vec2) ** 0.5
     return dot / (norm1 * norm2) if norm1 and norm2 else 0.0
 
+
 def get_relevant_sources(prompt: str, api_key: str, top_k: int = 2):
-    """Get most relevant dataset sources for a given prompt."""
+    """Get most relevant dataset sources and PDF content for a given prompt."""
+    # Get existing dataset texts
     texts = fetch_dataset_texts()
+    
+    # Add PDF content to searchable texts
+    for pdf_name, pdf_data in st.session_state.get('uploaded_pdfs', {}).items():
+        for i, chunk in enumerate(pdf_data['chunks']):
+            chunk_name = f"{pdf_name} (Part {i+1})"
+            texts[chunk_name] = chunk
+    
     client = OpenAI(api_key=api_key)
     
     # Get prompt embedding
@@ -113,7 +188,7 @@ def get_relevant_sources(prompt: str, api_key: str, top_k: int = 2):
             )
             text_embedding = text_response.data[0].embedding
             similarity = cosine_similarity(prompt_embedding, text_embedding)
-            similarities.append((name, similarity))
+            similarities.append((name, similarity, text))
     
     # Return top k most similar
     similarities.sort(key=lambda x: x[1], reverse=True)
@@ -162,7 +237,7 @@ def get_api_key():
     return st.secrets["openai_api_key"]
 
 def display_chat_message(message: Dict, is_user: bool = True):
-    """Display a chat message with enhanced source information."""
+    """Display a chat message with enhanced source information including PDFs."""
     role = "user" if is_user else "assistant"
     
     with st.chat_message(role):
@@ -172,9 +247,15 @@ def display_chat_message(message: Dict, is_user: bool = True):
             with st.expander(f"📚 Smart Sources ({len(message['sources'])})", expanded=False):
                 for source in message['sources']:
                     name = source.get('name', 'Unknown')
-                    url = source.get('url', '#')
                     relevance = source.get('relevance', 'N/A')
-                    st.markdown(f"• **[{name}]({url})** (relevance: {relevance})")
+                    source_type = source.get('type', 'dataset')
+                    
+                    if source_type == 'pdf':
+                        st.markdown(f"📄 **{name}** (PDF - relevance: {relevance})")
+                    else:
+                        url = source.get('url', '#')
+                        st.markdown(f"🌐 **[{name}]({url})** (relevance: {relevance})")
+
 @st.cache_data(ttl=3600)
 def download_excel_file(url: str, filename: str) -> pd.DataFrame:
     """Download CSV file from URL and return as DataFrame."""
@@ -195,6 +276,7 @@ def download_excel_file(url: str, filename: str) -> pd.DataFrame:
         logger.error(f"Download error: {str(e)}")
         return pd.DataFrame()
 
+
 def generate_enhanced_response(prompt: str, model: str, api_key: str) -> dict:
     """Generate AI response with model-specific parameter handling & endpoint selection."""
     try:
@@ -206,18 +288,26 @@ def generate_enhanced_response(prompt: str, model: str, api_key: str) -> dict:
         
         client = OpenAI(api_key=api_key)
         
-        # Get relevant sources
-        relevant_sources = get_relevant_sources(prompt, api_key, top_k=2)
+        # Get relevant sources (now returns name, similarity, content for PDFs)
+        relevant_sources = get_relevant_sources(prompt, api_key, top_k=3)
         
-        # Build context
-        context = "You are a disability science research assistant."
+        # Build context - enhanced to include actual PDF content
+        context = "You are a disability science research assistant with access to uploaded documents and datasets."
         
         if relevant_sources:
             context += f"\n\nMost relevant sources for this query:"
-            for name, similarity in relevant_sources:
-                context += f"\n- {name} (relevance: {similarity:.2f})"
+            for item in relevant_sources:
+                # Handle both old format (name, similarity) and new format (name, similarity, content)
+                if len(item) == 3:
+                    name, similarity, content = item
+                    context += f"\n\n--- {name} (relevance: {similarity:.2f}) ---"
+                    # Include actual content in context for better responses
+                    context += f"\n{content[:1000]}..."  # First 1000 chars to avoid token limits
+                else:
+                    name, similarity = item
+                    context += f"\n- {name} (relevance: {similarity:.2f})"
         
-        # Handle model-specific requirements
+        # Handle model-specific requirements (kept exactly the same)
         if model == "gpt-4o-mini-search-preview":
             # No temperature parameter, uses chat completions
             messages = [
@@ -283,14 +373,30 @@ def generate_enhanced_response(prompt: str, model: str, api_key: str) -> dict:
             )
             content = response.choices[0].message.content
         
-        # Create sources list
+        # Create sources list - enhanced to handle both datasets and PDFs
         sources = []
-        for name, similarity in relevant_sources:
+        for item in relevant_sources:
+            # Handle both old format (name, similarity) and new format (name, similarity, content)
+            if len(item) == 3:
+                name, similarity, _ = item
+            else:
+                name, similarity = item
+                
+            # Check if it's a dataset source
             if name in DISABILITY_DATASETS:
                 sources.append({
                     "name": name, 
                     "url": DISABILITY_DATASETS[name],
-                    "relevance": f"{similarity:.2f}"
+                    "relevance": f"{similarity:.2f}",
+                    "type": "dataset"
+                })
+            # Check if it's a PDF source
+            elif any(pdf_name in name for pdf_name in st.session_state.get('uploaded_pdfs', {})):
+                sources.append({
+                    "name": name,
+                    "url": "#uploaded_pdf",
+                    "relevance": f"{similarity:.2f}",
+                    "type": "pdf"
                 })
         
         return {
@@ -303,7 +409,7 @@ def generate_enhanced_response(prompt: str, model: str, api_key: str) -> dict:
             "content": f"Error generating response: {str(e)}",
             "sources": []
         }
-        
+
 def get_model_config(model: str) -> dict:
     """Get configuration details for each model."""
     model_configs = {
@@ -412,7 +518,65 @@ def main():
                         }
                 st.success("✅ Sample data loaded!")
                 st.rerun()
-        
+        # pdf upload
+        st.markdown("---")
+        st.subheader("📄 PDF Upload")
+
+        # File uploader
+        uploaded_files = st.file_uploader(
+            "Upload PDF documents",
+            type=['pdf'],
+            accept_multiple_files=True,
+            help="Upload PDF files to add to your chat context"
+        )
+
+        if uploaded_files:
+            if st.button("📤 Process Uploaded PDFs"):
+                with st.spinner("Processing PDFs..."):
+                    new_pdfs = process_uploaded_pdfs(uploaded_files)
+                    
+                    # Update session state
+                    if 'uploaded_pdfs' not in st.session_state:
+                        st.session_state.uploaded_pdfs = {}
+                    st.session_state.uploaded_pdfs.update(new_pdfs)
+                    
+                    if new_pdfs:
+                        st.success(f"✅ Processed {len(new_pdfs)} PDF(s)")
+                        st.rerun()
+                    else:
+                        st.error("❌ No valid PDFs found")
+
+        # Show uploaded PDFs status
+        if st.session_state.get('uploaded_pdfs'):
+            st.write("**Uploaded PDFs:**")
+            
+            for pdf_name, pdf_data in st.session_state.uploaded_pdfs.items():
+                with st.expander(f"📄 {pdf_name}"):
+                    st.write(f"**Size:** {pdf_data['size']:,} characters")
+                    st.write(f"**Pages/Chunks:** {pdf_data['pages']}")
+                    st.write(f"**Uploaded:** {pdf_data['upload_time'].strftime('%Y-%m-%d %H:%M')}")
+                    
+                    # Preview first chunk
+                    if st.checkbox(f"Preview", key=f"preview_pdf_{pdf_name}"):
+                        st.text_area(
+                            "Content Preview",
+                            pdf_data['chunks'][0][:500] + "..." if len(pdf_data['chunks'][0]) > 500 else pdf_data['chunks'][0],
+                            height=150,
+                            key=f"preview_content_{pdf_name}"
+                        )
+                    
+                    # Remove PDF button
+                    if st.button(f"🗑️ Remove", key=f"remove_{pdf_name}"):
+                        del st.session_state.uploaded_pdfs[pdf_name]
+                        st.rerun()
+
+            # Clear all PDFs button
+            if st.button("🗑️ Clear All PDFs"):
+                st.session_state.uploaded_pdfs = {}
+                st.rerun()
+        else:
+            st.info("No PDFs uploaded yet")
+
         # Show dataset status
         if st.session_state.datasets:
             st.write("**Loaded Datasets:**")
