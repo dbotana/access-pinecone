@@ -7,9 +7,9 @@ import logging
 logger = logging.getLogger(__name__)
 
 class PineconeRAG:
-    def __init__(self, 
+    def __init__(self,
                  openai_api_key: str,
-                 pinecone_api_key: str, 
+                 pinecone_api_key: str,
                  pinecone_index_name: str,
                  embedding_model: str = "text-embedding-3-small",
                  llm_model: str = "gpt-4o-mini"):
@@ -24,6 +24,48 @@ class PineconeRAG:
         self.index = self.pc.Index(pinecone_index_name)
         
         logger.info(f"Initialized PineconeRAG with index: {pinecone_index_name}")
+
+    def get_model_config(self, model: str) -> dict:
+        """Get configuration details for each model - matching streamlit_app.py"""
+        model_configs = {
+            "gpt-5-nano": {
+                "supports_temperature": True,
+                "token_parameter": "max_completion_tokens",
+                "endpoint": "chat/completions",
+                "description": "✅ Full chat features"
+            },
+            "gpt-4o-mini-search-preview": {
+                "supports_temperature": False,
+                "token_parameter": "max_tokens",
+                "endpoint": "chat/completions",
+                "description": "🔍 Search-optimized (no temperature)"
+            },
+            "o4-mini": {
+                "supports_temperature": True,
+                "token_parameter": "max_completion_tokens",
+                "endpoint": "chat/completions",
+                "description": "⚡ Uses max_completion_tokens"
+            },
+            "o4-mini-deep-research": {
+                "supports_temperature": True,
+                "token_parameter": "max_tokens",
+                "endpoint": "responses",
+                "description": "🔬 Research model (responses API)"
+            },
+            "gpt-4o-mini": {
+                "supports_temperature": True,
+                "token_parameter": "max_completion_tokens",
+                "endpoint": "chat/completions",
+                "description": "🤖 Standard GPT-4o mini"
+            }
+        }
+        
+        return model_configs.get(model, {
+            "supports_temperature": True,
+            "token_parameter": "max_completion_tokens",
+            "endpoint": "chat/completions",
+            "description": "❓ Unknown model"
+        })
 
     def get_embedding(self, text: str) -> List[float]:
         """Generate embedding for query text"""
@@ -58,10 +100,10 @@ class PineconeRAG:
                         'file_name': match['metadata']['filename'],
                         'chunk': match['metadata']['chunk'],
                         'total_chunks': match['metadata'].get('total_chunks', 'Unknown'),
-                        'source_type': 'PDF'
+                        'source_type': 'PDF',
+                        'score': match['score']  # Include score in source for easy access
                     }
                 })
-            
             return documents
             
         except Exception as e:
@@ -69,7 +111,7 @@ class PineconeRAG:
             return []
 
     def generate_response(self, query: str, documents: List[Dict], chat_history: List = None) -> Dict[str, Any]:
-        """Generate response using retrieved documents"""
+        """Generate response using retrieved documents with model-specific handling"""
         try:
             # Prepare context from retrieved documents
             context = "\n\n".join([
@@ -77,15 +119,16 @@ class PineconeRAG:
                 for i, doc in enumerate(documents)
             ])
             
-            # Prepare chat history
-            messages = [
-                {
-                    "role": "system", 
-                    "content": """You are a helpful assistant specializing in disability science research. 
-                    Use the provided context to answer questions about disability data, research, employment, 
-                    education, and related topics. If the information isn't in the context, say so clearly."""
-                }
-            ]
+            # Get model configuration
+            config = self.get_model_config(self.llm_model)
+            
+            # Prepare system message
+            system_content = """You are a helpful assistant specializing in disability science research.
+Use the provided context to answer questions about disability data, research, employment,
+education, and related topics. If the information isn't in the context, say so clearly."""
+            
+            # Prepare messages
+            messages = [{"role": "system", "content": system_content}]
             
             # Add chat history if provided
             if chat_history:
@@ -96,7 +139,7 @@ class PineconeRAG:
             messages.append({
                 "role": "user",
                 "content": f"""Context from disability science documents:
-                
+
 {context}
 
 Question: {query}
@@ -104,26 +147,57 @@ Question: {query}
 Please answer based on the provided context."""
             })
             
-            # Generate response
-            response = self.openai_client.chat.completions.create(
-                model=self.llm_model,
-                messages=messages,
-                temperature=0.1,
-                max_tokens=1500
-            )
-            
+            # Handle different model types based on endpoint
+            if config["endpoint"] == "responses":
+                # For models that use the responses endpoint
+                full_prompt = f"{system_content}\n\nContext: {context}\n\nQuestion: {query}"
+                try:
+                    request_params = {
+                        "model": self.llm_model,
+                        "prompt": full_prompt,
+                        config["token_parameter"]: 1500
+                    }
+                    
+                    if config["supports_temperature"]:
+                        request_params["temperature"] = 0.1
+                    
+                    response = self.openai_client.responses.create(**request_params)
+                    response_content = response.choices[0].text
+                    
+                except AttributeError:
+                    # Fallback to completions if responses endpoint doesn't exist
+                    request_params = {
+                        "model": self.llm_model,
+                        "prompt": full_prompt,
+                        config["token_parameter"]: 1500
+                    }
+                    
+                    if config["supports_temperature"]:
+                        request_params["temperature"] = 0.1
+                    
+                    response = self.openai_client.completions.create(**request_params)
+                    response_content = response.choices[0].text
+                    
+            else:
+                # For chat completion models
+                request_params = {
+                    "model": self.llm_model,
+                    "messages": messages,
+                    config["token_parameter"]: 1500
+                }
+                
+                if config["supports_temperature"]:
+                    request_params["temperature"] = 0.1
+                
+                response = self.openai_client.chat.completions.create(**request_params)
+                response_content = response.choices[0].message.content
+
             return {
-                'response': response.choices[0].message.content,
-                'sources': [
-                    {
-                        **doc['source'],
-                        'score': doc['score']  # Add this line
-                    } 
-                    for doc in documents
-                ],
+                'response': response_content,
+                'sources': [doc['source'] for doc in documents],
                 'total_documents': len(documents)
             }
-            
+
         except Exception as e:
             logger.error(f"Error generating response: {e}")
             return {
