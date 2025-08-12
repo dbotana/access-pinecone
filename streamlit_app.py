@@ -52,7 +52,7 @@ def initialize_session_state():
         'uploaded_pdfs': {},
         'system_initialized': False,
         'rag_system': None,
-        'llm_model': 'gpt-5.1-nano',
+        'llm_model': 'gpt-5-nano',
     }
     
     for key, default_value in defaults.items():
@@ -386,7 +386,7 @@ def generate_enhanced_response(prompt: str, model: str, api_key: str) -> dict:
                 content = response.choices[0].text
                 
         else:
-            # Default case: gpt-5.1-nano and other standard models
+            # Default case: gpt-5-nano and other standard models
             messages = [
                 {"role": "system", "content": context},
                 {"role": "user", "content": prompt}
@@ -439,7 +439,7 @@ def generate_enhanced_response(prompt: str, model: str, api_key: str) -> dict:
 def get_model_config(model: str) -> dict:
     """Get configuration details for each model."""
     model_configs = {
-        "gpt-5.1-nano": {
+        "gpt-5-nano": {
             "supports_temperature": True,
             "token_parameter": "max_tokens",
             "endpoint": "chat/completions",
@@ -498,7 +498,7 @@ def main():
         st.subheader("🤖 Model Settings")
 
         # Model options with compatibility info
-        model_options = ["gpt-5.1-nano", "o4-mini", "o4-mini-deep-research", "gpt-4o-mini-search-preview"]
+        model_options = ["gpt-5-nano", "o4-mini", "o4-mini-deep-research", "gpt-4o-mini-search-preview"]
 
         # Create selection with descriptions
         current_model = st.session_state.llm_model
