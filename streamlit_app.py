@@ -8,11 +8,10 @@ from datetime import datetime, timedelta
 from io import BytesIO
 from typing import Dict
 import hmac
-# Add this import with your other imports
 import PyPDF2
 from io import BytesIO
-
-
+from pinecone_rag import PineconeRAG  
+from bs4 import BeautifulSoup
 # Import authentication module
 from auth import check_password, get_api_key
 
@@ -53,17 +52,44 @@ def initialize_session_state():
         'uploaded_pdfs': {},
         'system_initialized': False,
         'rag_system': None,
-        'llm_model': 'gpt-4.1-nano',
-        # Removed all authentication-related session state variables
+        'llm_model': 'gpt-5.1-nano',
     }
     
     for key, default_value in defaults.items():
         if key not in st.session_state:
             st.session_state[key] = default_value
+def setup_pinecone_rag():
+    """Setup the Pinecone RAG system"""
+    try:
+        # Get API keys from session state
+        openai_api_key = st.session_state.get('openai_api_key')
+        pinecone_api_key = st.session_state.get('pinecone_api_key')
+        pinecone_index_name = st.session_state.get('pinecone_index_name')
+        
+        if not all([openai_api_key, pinecone_api_key, pinecone_index_name]):
+            st.error("Please provide all required API keys and configuration.")
+            return False
+        
+        # Initialize Pinecone RAG system
+        with st.spinner("Connecting to Pinecone and initializing RAG system..."):
+            st.session_state.rag_system = PineconeRAG(
+                openai_api_key=openai_api_key,
+                pinecone_api_key=pinecone_api_key,
+                pinecone_index_name=pinecone_index_name,
+                embedding_model=st.session_state.get('embedding_model', 'text-embedding-3-small'),
+                llm_model=st.session_state.get('llm_model', 'gpt-4o-mini')
+            )
+            
+        st.session_state.system_initialized = True
+        st.success("✅ Connected to Pinecone RAG system successfully!")
+        return True
+        
+    except Exception as e:
+        st.error(f"❌ Error connecting to Pinecone: {str(e)}")
+        logger.error(f"Pinecone connection error: {str(e)}")
+        return False
+    
 
-import requests
-from bs4 import BeautifulSoup
-from openai import OpenAI
 
 @st.cache_data(ttl=3600)  # Cache for 1 hour
 def fetch_dataset_texts():
@@ -360,7 +386,7 @@ def generate_enhanced_response(prompt: str, model: str, api_key: str) -> dict:
                 content = response.choices[0].text
                 
         else:
-            # Default case: gpt-4.1-nano and other standard models
+            # Default case: gpt-5.1-nano and other standard models
             messages = [
                 {"role": "system", "content": context},
                 {"role": "user", "content": prompt}
@@ -413,7 +439,7 @@ def generate_enhanced_response(prompt: str, model: str, api_key: str) -> dict:
 def get_model_config(model: str) -> dict:
     """Get configuration details for each model."""
     model_configs = {
-        "gpt-4.1-nano": {
+        "gpt-5.1-nano": {
             "supports_temperature": True,
             "token_parameter": "max_tokens",
             "endpoint": "chat/completions",
@@ -472,7 +498,7 @@ def main():
         st.subheader("🤖 Model Settings")
 
         # Model options with compatibility info
-        model_options = ["gpt-4.1-nano", "o4-mini", "o4-mini-deep-research", "gpt-4o-mini-search-preview"]
+        model_options = ["gpt-5.1-nano", "o4-mini", "o4-mini-deep-research", "gpt-4o-mini-search-preview"]
 
         # Create selection with descriptions
         current_model = st.session_state.llm_model
@@ -576,6 +602,40 @@ def main():
                 st.rerun()
         else:
             st.info("No PDFs uploaded yet")
+        
+        # Add to your sidebar configuration section
+        st.sidebar.subheader("🔧 Pinecone Configuration")
+        pinecone_api_key = st.sidebar.text_input(
+            "Pinecone API Key", 
+            type="password",
+            help="Enter your Pinecone API key"
+        )
+        pinecone_index_name = st.sidebar.text_input(
+            "Pinecone Index Name", 
+            value="access-data",
+            help="Name of your Pinecone index"
+        )
+        pinecone_environment = st.sidebar.text_input(
+            "Pinecone Environment", 
+            value="us-east-1-aws",
+            help="Your Pinecone environment"
+        )
+
+        # Store in session state
+        if pinecone_api_key:
+            st.session_state.pinecone_api_key = pinecone_api_key
+        if pinecone_index_name:
+            st.session_state.pinecone_index_name = pinecone_index_name
+        if pinecone_environment:
+            st.session_state.pinecone_environment = pinecone_environment
+
+        # Pinecone Configuration
+        st.sidebar.subheader("Pinecone Settings")
+        pinecone_index_name = st.sidebar.text_input("Index Name", value="access-data")
+        # Initialize system button
+        if not st.session_state.system_initialized:
+            if st.button("🚀 Connect to Pinecone RAG System", type="primary"):
+                setup_pinecone_rag()
 
         # Show dataset status
         if st.session_state.datasets:
