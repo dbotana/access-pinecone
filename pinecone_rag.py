@@ -114,7 +114,13 @@ Please answer based on the provided context."""
             
             return {
                 'response': response.choices[0].message.content,
-                'sources': [doc['source'] for doc in documents],
+                'sources': [
+                    {
+                        **doc['source'],
+                        'score': doc['score']  # Add this line
+                    } 
+                    for doc in documents
+                ],
                 'total_documents': len(documents)
             }
             

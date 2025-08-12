@@ -671,16 +671,38 @@ def main():
             user_message = {"role": "user", "content": prompt}
             st.session_state.chat_history.append(user_message)
             display_chat_message(user_message, is_user=True)
-            
-            # Generate response using API key from secrets
+
             with st.spinner("🤔 Thinking..."):
-                api_key = get_api_key()  # Simple function to get API key from secrets
-                response = generate_enhanced_response(
-                    prompt, 
-                    st.session_state.llm_model,
-                    api_key
-                )
-                
+                # Use Pinecone RAG if available, otherwise fall back to original method
+                if st.session_state.system_initialized and st.session_state.rag_system:
+                    # Use Pinecone RAG system
+                    rag_response = st.session_state.rag_system.chat(
+                        prompt, 
+                        chat_history=st.session_state.chat_history[:-1],  # Exclude current user message
+                        top_k=5
+                    )
+                    
+                    # Format response to match expected structure
+                    response = {
+                        "content": rag_response["response"],
+                        "sources": [
+                            {
+                                "name": f"{source['file_name']} (Chunk {source['chunk']})",
+                                "url": "#pinecone_document",
+                                "relevance": f"{score:.2f}" if 'score' in locals() else "N/A",
+                                "type": "pinecone"
+                            }
+                            for source in rag_response.get("sources", [])
+                        ]
+                    }
+                else:
+                    # Fall back to original method
+                    api_key = get_api_key()
+                    response = generate_enhanced_response(
+                        prompt,
+                        st.session_state.llm_model,
+                        api_key
+                    )                
                 assistant_message = {
                     "role": "assistant",
                     "content": response["content"],
