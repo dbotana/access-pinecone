@@ -263,9 +263,8 @@ def get_api_key():
     return st.secrets["openai_api_key"]
 
 def display_chat_message(message: Dict, is_user: bool = True):
-    """Display a chat message with enhanced source information including PDFs."""
+    """Display a chat message with enhanced source information including Pinecone."""
     role = "user" if is_user else "assistant"
-    
     with st.chat_message(role):
         st.markdown(message.get('content', ''))
         
@@ -276,7 +275,9 @@ def display_chat_message(message: Dict, is_user: bool = True):
                     relevance = source.get('relevance', 'N/A')
                     source_type = source.get('type', 'dataset')
                     
-                    if source_type == 'pdf':
+                    if source_type == 'pinecone':
+                        st.markdown(f"🔍 **{name}** (Pinecone - relevance: {relevance})")
+                    elif source_type == 'pdf':
                         st.markdown(f"📄 **{name}** (PDF - relevance: {relevance})")
                     else:
                         url = source.get('url', '#')
@@ -689,7 +690,7 @@ def main():
                             {
                                 "name": f"{source['file_name']} (Chunk {source['chunk']})",
                                 "url": "#pinecone_document",
-                                "relevance": f"{score:.2f}" if 'score' in locals() else "N/A",
+                                "relevance": f"{'score':.2f}" if 'score' in locals() else "N/A",
                                 "type": "pinecone"
                             }
                             for source in rag_response.get("sources", [])
