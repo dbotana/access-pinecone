@@ -61,13 +61,13 @@ def initialize_session_state():
 def setup_pinecone_rag():
     """Setup the Pinecone RAG system"""
     try:
-        # Get API keys from session state
-        openai_api_key = st.session_state.get('openai_api_key')
+        # Get API keys from secrets and session state
+        openai_api_key = get_api_key()  # Your existing function
         pinecone_api_key = st.session_state.get('pinecone_api_key')
         pinecone_index_name = st.session_state.get('pinecone_index_name')
         
         if not all([openai_api_key, pinecone_api_key, pinecone_index_name]):
-            st.error("Please provide all required API keys and configuration.")
+            st.error("Missing required API keys or configuration. Check secrets.toml")
             return False
         
         # Initialize Pinecone RAG system
@@ -602,40 +602,34 @@ def main():
                 st.rerun()
         else:
             st.info("No PDFs uploaded yet")
-        
         # Add to your sidebar configuration section
         st.sidebar.subheader("🔧 Pinecone Configuration")
-        pinecone_api_key = st.sidebar.text_input(
-            "Pinecone API Key", 
-            type="password",
-            help="Enter your Pinecone API key"
-        )
-        pinecone_index_name = st.sidebar.text_input(
-            "Pinecone Index Name", 
-            value="access-data",
-            help="Name of your Pinecone index"
-        )
-        pinecone_environment = st.sidebar.text_input(
-            "Pinecone Environment", 
-            value="us-east-1-aws",
-            help="Your Pinecone environment"
-        )
 
-        # Store in session state
-        if pinecone_api_key:
+        # Get Pinecone credentials from secrets
+        try:
+            pinecone_api_key = st.secrets["pinecone_api_key"]
+            pinecone_index_name = st.secrets["pinecone_index_name"] 
+            pinecone_environment = st.secrets["pinecone_environment"]
+            
+            # Store in session state
             st.session_state.pinecone_api_key = pinecone_api_key
-        if pinecone_index_name:
             st.session_state.pinecone_index_name = pinecone_index_name
-        if pinecone_environment:
             st.session_state.pinecone_environment = pinecone_environment
+            
+            # Show status instead of inputs
+            st.sidebar.success("✅ Pinecone credentials loaded")
+            st.sidebar.write(f"**Index:** {pinecone_index_name}")
+            st.sidebar.write(f"**Environment:** {pinecone_environment}")
+            
+        except KeyError as e:
+            st.sidebar.error(f"❌ Missing Pinecone secret: {e}")
+            st.sidebar.info("Add Pinecone credentials to secrets.toml")
 
-        # Pinecone Configuration
-        st.sidebar.subheader("Pinecone Settings")
-        pinecone_index_name = st.sidebar.text_input("Index Name", value="access-data")
         # Initialize system button
         if not st.session_state.system_initialized:
             if st.button("🚀 Connect to Pinecone RAG System", type="primary"):
                 setup_pinecone_rag()
+
 
         # Show dataset status
         if st.session_state.datasets:
