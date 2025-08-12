@@ -356,7 +356,6 @@ def generate_enhanced_response(prompt: str, model: str, api_key: str) -> dict:
             response = client.chat.completions.create(
                 model=model,
                 messages=messages,
-                temperature=0.3,
                 max_completion_tokens=800
             )
             content = response.choices[0].message.content
@@ -394,7 +393,6 @@ def generate_enhanced_response(prompt: str, model: str, api_key: str) -> dict:
             response = client.chat.completions.create(
                 model=model,
                 messages=messages,
-                temperature=0.3,
                 max_completion_tokens=800
             )
             content = response.choices[0].message.content
