@@ -312,110 +312,85 @@ def generate_enhanced_response(prompt: str, model: str, api_key: str) -> dict:
                 "content": "Please provide an OpenAI API key to enable AI responses.",
                 "sources": []
             }
-        
+
         client = OpenAI(api_key=api_key)
         
-        # Get relevant sources (now returns name, similarity, content for PDFs)
+        # Get relevant sources
         relevant_sources = get_relevant_sources(prompt, api_key, top_k=3)
         
-        # Build context - enhanced to include actual PDF content
+        # Build context
         context = "You are a disability science research assistant with access to uploaded documents and datasets."
-        
         if relevant_sources:
             context += f"\n\nMost relevant sources for this query:"
             for item in relevant_sources:
-                # Handle both old format (name, similarity) and new format (name, similarity, content)
                 if len(item) == 3:
                     name, similarity, content = item
                     context += f"\n\n--- {name} (relevance: {similarity:.2f}) ---"
-                    # Include actual content in context for better responses
-                    context += f"\n{content[:1000]}..."  # First 1000 chars to avoid token limits
+                    context += f"\n{content[:1000]}..."
                 else:
                     name, similarity = item
                     context += f"\n- {name} (relevance: {similarity:.2f})"
+
+        # Get model configuration
+        config = get_model_config(model)
         
-        # Handle model-specific requirements (kept exactly the same)
-        if model == "gpt-4o-mini-search-preview":
-            # No temperature parameter, uses chat completions
-            messages = [
-                {"role": "system", "content": context},
-                {"role": "user", "content": prompt}
-            ]
-            response = client.chat.completions.create(
-                model=model,
-                messages=messages,
-                max_tokens=800
-            )
-            content = response.choices[0].message.content
-            
-        elif model == "o4-mini":
-            # Uses max_completion_tokens instead of max_tokens
-            messages = [
-                {"role": "system", "content": context},
-                {"role": "user", "content": prompt}
-            ]
-            response = client.chat.completions.create(
-                model=model,
-                messages=messages,
-                max_completion_tokens=800
-            )
-            content = response.choices[0].message.content
-            
-        elif model == "o4-mini-deep-research":
-            # Uses v1/responses endpoint instead of chat completions
-            # Combine context and prompt for responses endpoint
+        # Prepare messages for chat models
+        messages = [
+            {"role": "system", "content": context},
+            {"role": "user", "content": prompt}
+        ]
+        
+        # Handle different model types
+        if config["endpoint"] == "responses":
+            # For o4-mini-deep-research
             full_prompt = f"{context}\n\nUser Query: {prompt}"
-            
             try:
-                # Try the responses endpoint
                 response = client.responses.create(
                     model=model,
                     prompt=full_prompt,
-                    temperature=0.3,
-                    max_tokens=800
+                    temperature=0.3 if config["supports_temperature"] else None,
+                    **{config["token_parameter"]: 800}
                 )
                 content = response.choices[0].text
             except AttributeError:
-                # If responses endpoint doesn't exist in client, use completions
+                # Fallback to completions if responses endpoint doesn't exist
                 response = client.completions.create(
                     model=model,
                     prompt=full_prompt,
-                    temperature=0.3,
-                    max_tokens=800
+                    temperature=0.3 if config["supports_temperature"] else None,
+                    **{config["token_parameter"]: 800}
                 )
                 content = response.choices[0].text
-                
         else:
-            # Default case: gpt-5-nano and other standard models
-            messages = [
-                {"role": "system", "content": context},
-                {"role": "user", "content": prompt}
-            ]
-            response = client.chat.completions.create(
-                model=model,
-                messages=messages,
-                max_completion_tokens=800
-            )
+            # For chat completion models
+            request_params = {
+                "model": model,
+                "messages": messages,
+                config["token_parameter"]: 800
+            }
+            
+            # Only add temperature if supported
+            if config["supports_temperature"]:
+                request_params["temperature"] = 0.3
+                
+            response = client.chat.completions.create(**request_params)
             content = response.choices[0].message.content
-        
-        # Create sources list - enhanced to handle both datasets and PDFs
+
+        # Create sources list (rest of your existing code)
         sources = []
         for item in relevant_sources:
-            # Handle both old format (name, similarity) and new format (name, similarity, content)
             if len(item) == 3:
                 name, similarity, _ = item
             else:
                 name, similarity = item
                 
-            # Check if it's a dataset source
             if name in DISABILITY_DATASETS:
                 sources.append({
-                    "name": name, 
+                    "name": name,
                     "url": DISABILITY_DATASETS[name],
                     "relevance": f"{similarity:.2f}",
                     "type": "dataset"
                 })
-            # Check if it's a PDF source
             elif any(pdf_name in name for pdf_name in st.session_state.get('uploaded_pdfs', {})):
                 sources.append({
                     "name": name,
@@ -423,12 +398,12 @@ def generate_enhanced_response(prompt: str, model: str, api_key: str) -> dict:
                     "relevance": f"{similarity:.2f}",
                     "type": "pdf"
                 })
-        
+
         return {
             "content": content,
             "sources": sources
         }
-        
+
     except Exception as e:
         return {
             "content": f"Error generating response: {str(e)}",
@@ -440,20 +415,20 @@ def get_model_config(model: str) -> dict:
     model_configs = {
         "gpt-5-nano": {
             "supports_temperature": True,
-            "token_parameter": "max_tokens",
+            "token_parameter": "max_completion_tokens",  # Updated
             "endpoint": "chat/completions",
             "description": "✅ Full chat features"
         },
         "gpt-4o-mini-search-preview": {
             "supports_temperature": False,
-            "token_parameter": "max_tokens", 
+            "token_parameter": "max_tokens",
             "endpoint": "chat/completions",
             "description": "🔍 Search-optimized (no temperature)"
         },
         "o4-mini": {
             "supports_temperature": True,
             "token_parameter": "max_completion_tokens",
-            "endpoint": "chat/completions", 
+            "endpoint": "chat/completions",
             "description": "⚡ Uses max_completion_tokens"
         },
         "o4-mini-deep-research": {
@@ -466,7 +441,7 @@ def get_model_config(model: str) -> dict:
     
     return model_configs.get(model, {
         "supports_temperature": True,
-        "token_parameter": "max_tokens",
+        "token_parameter": "max_completion_tokens",  # Safe default
         "endpoint": "chat/completions",
         "description": "❓ Unknown model"
     })
