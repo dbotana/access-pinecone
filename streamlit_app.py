@@ -395,7 +395,7 @@ def generate_enhanced_response(prompt: str, model: str, api_key: str) -> dict:
                 model=model,
                 messages=messages,
                 temperature=0.3,
-                max_tokens=800
+                max_completion_tokens=800
             )
             content = response.choices[0].message.content
         
