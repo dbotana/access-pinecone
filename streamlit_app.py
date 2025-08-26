@@ -29,6 +29,7 @@ st.set_page_config(
 # Your existing configurations
 DISABILITY_DATASETS = {
     "CDC Disability Datasets": "https://www.cdc.gov/dhds/datasets/index.html",
+    "Cornell Disability Statistics": "https://www.disabilitystatistics.org/",
     "Bureau of Labor Statistics": "https://data.bls.gov/dataQuery/find?removeAll=1",
     "Bureau of Labor Statistics 2025 Labor Force Characteristics Summary": "https://www.bls.gov/news.release/pdf/disabl.pdf",
     "National Center for College Students with Disabilities": "https://nccsd.ici.umn.edu/clearinghouse/audience-specific-resources/researchers--policy-makers/stats-college-stds-with-disabilities",
@@ -417,25 +418,25 @@ def get_model_config(model: str) -> dict:
             "supports_temperature": True,
             "token_parameter": "max_completion_tokens",  # Updated
             "endpoint": "chat/completions",
-            "description": "✅ Full chat features"
+            "description": "✅ Low-cost everyday use model"
         },
         "gpt-4o-mini-search-preview": {
             "supports_temperature": False,
             "token_parameter": "max_tokens",
             "endpoint": "chat/completions",
-            "description": "🔍 Search-optimized (no temperature)"
+            "description": "🔍 Search-optimized for accessing the internet"
         },
         "o4-mini": {
             "supports_temperature": True,
             "token_parameter": "max_completion_tokens",
             "endpoint": "chat/completions",
-            "description": "⚡ Uses max_completion_tokens"
+            "description": "⚡ Reasoning model for complex questions"
         },
         "o4-mini-deep-research": {
             "supports_temperature": True,
             "token_parameter": "max_tokens",
             "endpoint": "responses",
-            "description": "🔬 Research model (responses API)"
+            "description": "🔬 Research model for generating long outputs"
         }
     }
     
@@ -691,16 +692,23 @@ def main():
             
         # Quick action buttons
         st.subheader("🎯 Quick Questions")
-        col_a, col_b = st.columns(2)
+        col_a, col_b, col_c = st.columns(3)
         
         with col_a:
             if st.button("📊 Employment Stats"):
-                prompt = "What are the latest disability employment statistics?"
+                prompt = "Find specific statistics comparing the employment rates of people with disabilities compared to peers without disabilities"
                 user_message = {"role": "user", "content": prompt}
                 st.session_state.chat_history.append(user_message)
                 st.rerun()
         
         with col_b:
+            if st.button("📋 Graduation stats"):
+                prompt = "Find specific statistics comparing the proportion of people with disabilities who have a bachelor's degree compared to peers without disabilities"
+                user_message = {"role": "user", "content": prompt}
+                st.session_state.chat_history.append(user_message)
+                st.rerun()
+                
+        with col_c:
             if st.button("📋 Data Sources"):
                 prompt = "What disability datasets are available?"
                 user_message = {"role": "user", "content": prompt}
