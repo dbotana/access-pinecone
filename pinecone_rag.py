@@ -10,17 +10,26 @@ class PineconeRAG:
     def __init__(self,
                  openai_api_key: str,
                  pinecone_api_key: str,
-                 pinecone_index_name: str,
+                 pinecone_index_name: str, 
+                 pinecone_environment: str,   # Add environment parameter
                  embedding_model: str = "text-embedding-3-small",
-                 llm_model: str = "gpt-4o-mini"):
+                 llm_model: str = "gpt-5-nano"):
         
         # Initialize OpenAI client
         self.openai_client = OpenAI(api_key=openai_api_key)
         self.embedding_model = embedding_model
         self.llm_model = llm_model
-        
-        # Initialize Pinecone
-        self.pc = Pinecone(api_key=pinecone_api_key)
+        try:
+            self.index = self.pc.Index(pinecone_index_name)
+            logger.info(f"Successfully connected to index: {pinecone_index_name}")
+        except Exception as e:
+            logger.error(f"Failed to connect to Pinecone index: {e}")
+            raise        
+        # Initialize Pinecone with environment
+        self.pc = Pinecone(
+            api_key=pinecone_api_key,
+            environment=pinecone_environment
+        )
         self.index = self.pc.Index(pinecone_index_name)
         
         logger.info(f"Initialized PineconeRAG with index: {pinecone_index_name}")
@@ -38,25 +47,19 @@ class PineconeRAG:
                 "supports_temperature": False,
                 "token_parameter": "max_tokens",
                 "endpoint": "chat/completions",
-                "description": "🔍 Search-optimized (no temperature)"
+                "description": "🔍 Search the internet for additional sources"
             },
             "o4-mini": {
                 "supports_temperature": True,
                 "token_parameter": "max_completion_tokens",
                 "endpoint": "chat/completions",
-                "description": "⚡ Uses max_completion_tokens"
+                "description": "⚡ Reasoning model for complex questions"
             },
             "o4-mini-deep-research": {
                 "supports_temperature": True,
                 "token_parameter": "max_tokens",
                 "endpoint": "responses",
-                "description": "🔬 Research model (responses API)"
-            },
-            "gpt-4o-mini": {
-                "supports_temperature": True,
-                "token_parameter": "max_completion_tokens",
-                "endpoint": "chat/completions",
-                "description": "🤖 Standard GPT-4o mini"
+                "description": "🔬 Research model for generating long text outputs"
             }
         }
         
@@ -70,10 +73,13 @@ class PineconeRAG:
     def get_embedding(self, text: str) -> List[float]:
         """Generate embedding for query text"""
         text = text.replace("\n", " ")
+        index_stats = self.index.describe_index_stats()
+        index_dims = index_stats.dimension
+        
         response = self.openai_client.embeddings.create(
             input=text,
             model=self.embedding_model,
-            dimensions=1024  # Match your index dimensions
+            dimensions=index_dims
         )
         return response.data[0].embedding
 
@@ -87,7 +93,9 @@ class PineconeRAG:
             results = self.index.query(
                 vector=query_embedding,
                 top_k=top_k,
-                include_metadata=True
+                include_metadata=True,
+                namespace="__default__",
+                filter={}
             )
             
             # Format results
