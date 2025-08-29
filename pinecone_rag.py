@@ -224,11 +224,35 @@ Please answer based on the provided context."""
             }
 
     def chat(self, query: str, chat_history: List = None, top_k: int = 20) -> Dict[str, Any]:
-        """Main chat function that combines search and generation"""
+        """Improved chat function with better retrieval for specific queries"""
+        
+        # Increase top_k for specific information queries
+        is_specific_query = any(keyword in query.lower() 
+                            for keyword in ['first', 'name', 'title', 'list', 'which'])
+        
+        search_k = min(50, top_k * 3) if is_specific_query else top_k
+        
         # Search for relevant documents
-        documents = self.search_documents(query, top_k)
+        documents = self.search_documents(query, search_k)
+        
+        # For specific queries, also try alternative search terms
+        if is_specific_query and 'JPED' in query:
+            # Extract the specific volume/issue from query
+            import re
+            volume_match = re.search(r'JPED[_\s]*(\d+)[_\s]*(\d+)', query)
+            if volume_match:
+                additional_query = f"table of contents volume {volume_match.group(1)} issue {volume_match.group(2)}"
+                additional_docs = self.search_documents(additional_query, 10)
+                # Combine and deduplicate
+                seen_chunks = set()
+                combined_docs = []
+                for doc in documents + additional_docs:
+                    key = (doc['source']['file_name'], doc['source']['chunk'])
+                    if key not in seen_chunks:
+                        combined_docs.append(doc)
+                        seen_chunks.add(key)
+                documents = combined_docs[:search_k]
         
         # Generate response
         result = self.generate_response(query, documents, chat_history)
-        
         return result
