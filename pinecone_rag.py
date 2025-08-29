@@ -38,7 +38,7 @@ class PineconeRAG:
         """Get configuration details for each model - matching streamlit_app.py"""
         model_configs = {
             "gpt-5-nano": {
-                "supports_temperature": True,
+                "supports_temperature": False,
                 "token_parameter": "max_completion_tokens",
                 "endpoint": "chat/completions",
                 "description": "✅ Full chat features"
