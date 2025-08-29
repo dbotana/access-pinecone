@@ -223,7 +223,7 @@ Please answer based on the provided context."""
                 'total_documents': 0
             }
 
-    def chat(self, query: str, chat_history: List = None, top_k: int = 5) -> Dict[str, Any]:
+    def chat(self, query: str, chat_history: List = None, top_k: int = 20) -> Dict[str, Any]:
         """Main chat function that combines search and generation"""
         # Search for relevant documents
         documents = self.search_documents(query, top_k)
