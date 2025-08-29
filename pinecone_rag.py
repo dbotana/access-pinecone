@@ -11,7 +11,6 @@ class PineconeRAG:
                  openai_api_key: str,
                  pinecone_api_key: str,
                  pinecone_index_name: str, 
-                 pinecone_environment: str,   # Add environment parameter
                  embedding_model: str = "text-embedding-3-small",
                  llm_model: str = "gpt-5-nano"):
         
@@ -25,10 +24,9 @@ class PineconeRAG:
         except Exception as e:
             logger.error(f"Failed to connect to Pinecone index: {e}")
             raise        
-        # Initialize Pinecone with environment
+        # Initialize Pinecone without environment
         self.pc = Pinecone(
             api_key=pinecone_api_key,
-            environment=pinecone_environment
         )
         self.index = self.pc.Index(pinecone_index_name)
         
