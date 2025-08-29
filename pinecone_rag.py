@@ -18,18 +18,20 @@ class PineconeRAG:
         self.openai_client = OpenAI(api_key=openai_api_key)
         self.embedding_model = embedding_model
         self.llm_model = llm_model
+        
+        # Initialize Pinecone first
+        self.pc = Pinecone(
+            api_key=pinecone_api_key,
+        )
+        
+        # Then try to connect to the index
         try:
             self.index = self.pc.Index(pinecone_index_name)
             logger.info(f"Successfully connected to index: {pinecone_index_name}")
         except Exception as e:
             logger.error(f"Failed to connect to Pinecone index: {e}")
-            raise        
-        # Initialize Pinecone without environment
-        self.pc = Pinecone(
-            api_key=pinecone_api_key,
-        )
-        self.index = self.pc.Index(pinecone_index_name)
-        
+            raise
+    
         logger.info(f"Initialized PineconeRAG with index: {pinecone_index_name}")
 
     def get_model_config(self, model: str) -> dict:
