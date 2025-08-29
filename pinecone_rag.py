@@ -38,7 +38,7 @@ class PineconeRAG:
         """Get configuration details for each model - matching streamlit_app.py"""
         model_configs = {
             "gpt-5-nano": {
-                "supports_temperature": False,
+                "supports_temperature": True, # 1 only
                 "token_parameter": "max_completion_tokens",
                 "endpoint": "chat/completions",
                 "description": "✅ Full chat features"
@@ -166,7 +166,10 @@ Please answer based on the provided context."""
                         config["token_parameter"]: 1500
                     }
                     
-                    if config["supports_temperature"]:
+                    # Set temperature=1 for gpt-5-nano, otherwise use 0.1 if supported
+                    if self.llm_model == "gpt-5-nano":
+                        request_params["temperature"] = 1
+                    elif config["supports_temperature"]:
                         request_params["temperature"] = 0.1
                     
                     response = self.openai_client.responses.create(**request_params)
@@ -180,7 +183,10 @@ Please answer based on the provided context."""
                         config["token_parameter"]: 1500
                     }
                     
-                    if config["supports_temperature"]:
+                    # Set temperature=1 for gpt-5-nano, otherwise use 0.1 if supported
+                    if self.llm_model == "gpt-5-nano":
+                        request_params["temperature"] = 1
+                    elif config["supports_temperature"]:
                         request_params["temperature"] = 0.1
                     
                     response = self.openai_client.completions.create(**request_params)
@@ -194,7 +200,10 @@ Please answer based on the provided context."""
                     config["token_parameter"]: 1500
                 }
                 
-                if config["supports_temperature"]:
+                # Set temperature=1 for gpt-5-nano, otherwise use 0.1 if supported
+                if self.llm_model == "gpt-5-nano":
+                    request_params["temperature"] = 1
+                elif config["supports_temperature"]:
                     request_params["temperature"] = 0.1
                 
                 response = self.openai_client.chat.completions.create(**request_params)
